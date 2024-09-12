@@ -21,6 +21,8 @@ def chat(query, history):
     global compression_retriever, GENERATION_MODEL, chat_history
     compressed_docs = compression_retriever.invoke(query)
 
+    print(compressed_docs)
+
     SYSTEM_PROMPT = """
     You are a PDF expert assistant with a focus on accurate and reliable information retrieval from the documents provided to you. 
     You must only answer questions based on the content of these documents. 
@@ -38,7 +40,7 @@ def chat(query, history):
             <|start_header_id|>assistant<|end_header_id|>
             """
 
-    response = ollama.generate(prompt=prompt, model=GENERATION_MODEL)['response']   
+    response = ollama.generate(system=SYSTEM_PROMPT, prompt=prompt, model=GENERATION_MODEL)['response']   
 
     return response
 

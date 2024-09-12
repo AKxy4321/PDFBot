@@ -3,6 +3,7 @@ import chromadb.utils.embedding_functions as embedding_functions
 from langchain_ollama import OllamaEmbeddings
 from llama_index.llms.ollama import Ollama 
 import chromadb
+import shutil
 import os
 
 def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODEL = "llama3.1"):
@@ -12,7 +13,7 @@ def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODE
     # embed_model and llm here needs to be used with llama-index functions
 
     embed_model = OllamaEmbeddings(model=EMBEDDING_MODEL)
-    llm = Ollama(model=GENERATION_MODEL, request_timeout=5.0)
+    llm = Ollama(model=GENERATION_MODEL, request_timeout=5.0, temperature=0)
 
     # Ollama_ef to be used with chromadb
 
@@ -21,8 +22,12 @@ def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODE
         model_name=EMBEDDING_MODEL,
     )
 
+    embeddings_path = os.path.join('..', 'embeddings')
+    shutil.rmtree(embeddings_path)
+    os.makedirs(embeddings_path, exist_ok=True)
+
     # Setup a chroma client, make it persistent so that we can store the embeddings
-    chroma_client = chromadb.PersistentClient(path=os.path.join('..', 'embeddings'),     
+    chroma_client = chromadb.PersistentClient(path=embeddings_path,     
                                 settings=Settings(allow_reset=True),
                                 tenant=DEFAULT_TENANT,
                                 database=DEFAULT_DATABASE,
