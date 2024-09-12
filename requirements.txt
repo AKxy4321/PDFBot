@@ -1,0 +1,16 @@
+# llama-index-embeddings-openai                          # Use if you have openai api
+# llama-index-vector-stores-kdbai
+# llama-index-postprocessor-cohere-rerank
+llama-index-llms-ollama
+langchain_community
+lancghain-cohere
+langchain-chroma
+langchain-ollama
+python-dotenv
+llama-parse
+llama-index
+langchain
+ipykernel
+chromadb
+ollama
+gradio
