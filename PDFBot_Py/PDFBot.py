@@ -17,8 +17,13 @@ from PDFBot_Setup import PDFBot_Setup
 from PDFBot_Load import PDFBot_Load, PDFBot_Store
 
 
+def upload_file(files):
+    file_paths = [file.name for file in files]
+    return file_paths
+
+
 def chat(query, history):
-    global compression_retriever, GENERATION_MODEL, chat_history
+    global compression_retriever, GENERATION_MODEL
     compressed_docs = compression_retriever.invoke(query)
 
     print(compressed_docs)
@@ -64,5 +69,41 @@ compression_retriever = ContextualCompressionRetriever(
     base_compressor=compressor, base_retriever=retriever
 )
 
-demo = gr.ChatInterface(fn=chat, title="PDFBot")
+with gr.Blocks() as demo:
+    
+    # First Block: File upload block
+    with gr.Column(elem_id="upload_section") as upload_block:
+        gr.Markdown("<h1 style='text-align: center;'>PDFBot</h1>")
+        upload_btn = gr.UploadButton(file_count="multiple", label="Upload PDF", file_types=["file"])
+    
+    # Second Block: Chat interface, initially hidden
+    with gr.Column(visible=False, elem_id="chat_section") as chat_block:
+        chat_interface = gr.ChatInterface(fn=chat, title="PDFBot")
+    
+    # Function to switch to the second block (chat block)
+    def switch_to_chat(files):
+        if files:
+            return gr.update(visible=False), gr.update(visible=True)
+        return gr.update(), gr.update()
+    
+    # Set the upload button to trigger the switch
+    upload_btn.upload(switch_to_chat, inputs=[upload_btn], outputs=[upload_block, chat_block])
+
+demo.css = """
+#upload_section {
+    padding-top: 25%;
+    justify-content: center;
+    align-items: center;
+}
+
+#chat_section {
+    height: 90vh;
+}
+
+.gr-chat-interface {
+    height: calc(90vh - 50px); /* Full screen minus space for the title */
+}
+"""
+
+# Launch the app
 demo.launch()

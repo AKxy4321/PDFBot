@@ -32,9 +32,9 @@ def PDFBot_Load(name, llm):
 
     # Check output of extraction
 
-    print(base_nodes)
-    print()
-    print(objects)
+    # print(base_nodes)
+    # print()
+    # print(objects)
 
     return base_nodes, objects
 
