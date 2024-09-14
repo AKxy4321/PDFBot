@@ -6,7 +6,7 @@ import chromadb
 import shutil
 import os
 
-def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODEL = "llama3.1"):
+def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODEL = "llama3.1", reset=True):
 
     # Instantiate the embedding and generation models
 
@@ -24,7 +24,7 @@ def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODE
 
     embeddings_path = os.path.join('..', 'embeddings')
     shutil.rmtree(embeddings_path)
-    os.makedirs(embeddings_path, exist_ok=True)
+    os.makedirs(embeddings_path)
 
     # Setup a chroma client, make it persistent so that we can store the embeddings
     chroma_client = chromadb.PersistentClient(path=embeddings_path,     

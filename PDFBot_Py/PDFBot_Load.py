@@ -1,18 +1,22 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from llama_index.core.node_parser import MarkdownElementNodeParser
 from llama_parse import LlamaParse
+from uuid import uuid4
 import pickle
 import os
 
 
-def PDFBot_Load(name, llm):
+def PDFBot_Load(name, llm, path=None):
 
     # Create Custom Parsing Instructions
 
     parsing_instructions = '''Answer questions using the information in this pdf and be precise. Avoid Hallucinations, and say you don't know if given data is not enough to answer the question'''
 
-    path = os.path.join('..', 'data', f'{name}.pdf')
-    pickle_path = os.path.join('..', 'data', f'parsed_{name}_documents.pkl')
+    if path is None:
+        path = os.path.join('..', 'data', f'{name}.pdf')
+        pickle_path = os.path.join('..', 'data', f'parsed_{name}_documents.pkl')
+    else:
+        pickle_path = os.path.join('..', 'data', f'parsed_{os.path.basename(path).replace(".pdf", "")}_documents.pkl')
 
     if os.path.exists(pickle_path):
         with open(pickle_path, 'rb') as file:
@@ -48,10 +52,8 @@ def PDFBot_Store(col, base_nodes, objects, ollama_ef):
             "\n\n"
         ])
         split_texts = text_splitter.split_text(node.text)
-        i = 0
         for text in split_texts:
             doc = ollama_ef(text)
-            col.add(documents=text, ids=str(i), embeddings=doc)
-            i += 1
+            col.add(documents=text, ids=str(uuid4()), embeddings=doc)
 
     return col
