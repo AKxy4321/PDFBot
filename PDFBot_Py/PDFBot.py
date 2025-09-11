@@ -1,131 +1,137 @@
-# Modification of code to work with Ollama
-# Import Required Libraries
+# %%
+import os
 
 import gradio as gr
 import ollama
 from dotenv import load_dotenv
-from langchain.retrievers.contextual_compression import ContextualCompressionRetriever
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain_chroma import Chroma
 from langchain_cohere import CohereRerank
-
-load_dotenv()
-
 from PDFBot_Load import PDFBot_Load, PDFBot_Store
 from PDFBot_Setup import PDFBot_Setup
 
-compression_retriever = None
-GENERATION_MODEL = None
+load_dotenv()
+
+# Use environment variables for model names
+GENERATION_MODEL = os.getenv("GENERATION_MODEL", "llama3.1")
+COHERE_API_KEY = os.getenv("CO_API_KEY")
+
+ollama_client = ollama.Client(
+    host=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+)
+
+# Application state for storing retriever and models
+app_state = {"compression_retriever": None}
 
 
-def upload_file(files):
-    file_paths = [file.name for file in files]
-    return file_paths
+def format_docs(docs):
+    """Helper function to format documents for the prompt context."""
+    return "\n\n".join(
+        f"Source: {doc.metadata.get('source', 'N/A')}\nContent: {doc.page_content}"
+        for doc in docs
+    )
 
 
 def chat(query, history):
-    global compression_retriever, GENERATION_MODEL
-    compressed_docs = compression_retriever.invoke(query)
+    """Chat function to handle user queries."""
+    if not app_state.get("compression_retriever"):
+        yield "Retriever not initialized. Please upload a PDF first."
+        return
 
-    print(compressed_docs)
+    retriever = app_state["compression_retriever"]
+    compressed_docs = retriever.invoke(query)
 
-    SYSTEM_PROMPT = """
-    You are a PDF expert assistant with a focus on accurate and reliable information retrieval from the documents provided to you. 
-    You must only answer questions based on the content of these documents. 
-    If you do not find the answer in the documents, respond with "I don't know." 
-    Avoid providing speculative or unrelated information, and do not pull in knowledge from external sources beyond what is contained in the given documents. 
-    Always prioritize correctness and clarity in your responses.
-    """
+    if not compressed_docs:
+        yield "I could not find any relevant information in the document to answer your question."
+        return
 
-    prompt = f"""
-            <|begin_of_text|><|start_header_id|>system<|end_header_id|>
-            {SYSTEM_PROMPT}<|eot_id|>
-            <|start_header_id|>user<|end_header_id|>
-            Query: {query}
-            Answer: Answer using {compressed_docs}<|eot_id|> 
-            <|start_header_id|>assistant<|end_header_id|>
-            """
+    context_str = format_docs(compressed_docs)
 
-    response = ollama.generate(
-        system=SYSTEM_PROMPT, prompt=prompt, model=GENERATION_MODEL
-    )["response"]
+    SYSTEM_PROMPT = """You are an expert Q&A assistant. Your task is to answer the user's query based *only* on the provided context.
+- If the context contains the answer, provide it clearly and concisely.
+- If the context does not contain the answer, you MUST respond with "I don't know.".
+- Do not use any external knowledge or make assumptions.
+- Cite the source of the information if available."""
 
-    return response
+    prompt = f"Context:\n---\n{context_str}\n---\nUser Query: {query}"
+
+    response = ""
+    try:
+        for chunk in ollama_client.chat(
+            model=GENERATION_MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            stream=True,
+        ):
+            token = chunk["message"]["content"]
+            response += token
+            yield response
+    except Exception as e:
+        yield f"An error occurred with the language model: {e}"
 
 
-def main(path=None):
-    global compression_retriever, GENERATION_MODEL
-    name = "Resume"
+def process_pdf(file_path, progress=gr.Progress(track_tqdm=True)):
+    """Main processing pipeline for a given PDF file."""
+    if not COHERE_API_KEY:
+        raise gr.Error("COHERE_API_KEY environment variable not set.")
+
     col_name = "LlamaParse"
-    EMBEDDING_MODEL = "nomic-embed-text"
-    GENERATION_MODEL = "llama3.1"
 
-    # Set Up
-    print("Starting")
-    embed_model, llm, ollama_ef, col, chroma_client = PDFBot_Setup(
-        col_name, EMBEDDING_MODEL=EMBEDDING_MODEL, GENERATION_MODEL=GENERATION_MODEL
-    )
+    progress(0, desc="Step 1/4: Initializing models and database...")
+    embed_model, llm, _, col, chroma_client = PDFBot_Setup(col_name=col_name)
 
-    # Parsing PDF
-    print("Parsing PDF")
-    base_nodes, objects = PDFBot_Load(name, llm, path=path)
+    progress(0.25, desc="Step 2/4: Parsing PDF with LlamaParse...")
+    base_nodes, objects = PDFBot_Load(name="resume", llm=llm, path=file_path)
 
-    # Updating ChromaDB
-    print("Updating ChromaDB")
-    PDFBot_Store(col=col, base_nodes=base_nodes, objects=objects, ollama_ef=ollama_ef)
+    progress(0.5, desc="Step 3/4: Storing and embedding document chunks...")
+    # The PDFBot_Store function is now a generator that yields progress
+    for _ in PDFBot_Store(
+        col=col,
+        base_nodes=base_nodes,
+        objects=objects,
+        embed_model=embed_model,
+        stream=True,
+    ):
+        # This loop will now update the progress bar implicitly via track_tqdm
+        pass
 
-    # Pass collection to langchain_chroma, instantiate retriever and cohere reranker
-    print("Retrieval")
+    progress(0.75, desc="Step 4/4: Setting up retrieval pipeline...")
     db = Chroma(
-        client=chroma_client, collection_name=col_name, embedding_function=embed_model
+        client=chroma_client,
+        collection_name=col_name,
+        embedding_function=embed_model,
     )
-    retriever = db.as_retriever()
+    retriever = db.as_retriever(search_kwargs={"k": 20})
 
     compressor = CohereRerank(top_n=10, model="rerank-english-v3.0")
-    compression_retriever = ContextualCompressionRetriever(
+    app_state["compression_retriever"] = ContextualCompressionRetriever(
         base_compressor=compressor, base_retriever=retriever
     )
+    progress(1, desc="Processing complete. Ready to chat!")
+    return gr.update(visible=False), gr.update(visible=True)
 
 
-with gr.Blocks() as demo:
-    # First Block: File upload block
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("<h1 style='text-align: center;'>PDFBot</h1>")
+
     with gr.Column(elem_id="upload_section") as upload_block:
-        gr.Markdown("<h1 style='text-align: center;'>PDFBot</h1>")
-        upload_btn = gr.UploadButton(
-            file_count="single", label="Upload PDF", file_types=["file"]
+        file_output = gr.File(label="Upload your PDF")
+        upload_button = gr.Button("Process PDF", variant="primary")
+
+    with gr.Column(visible=False, elem_id="chat_section") as chat_block:
+        chat_interface = gr.ChatInterface(
+            fn=chat,
+            title="Chat with your PDF",
+            description="Ask questions about the document you uploaded.",
         )
 
-    # Second Block: Chat interface, initially hidden
-    with gr.Column(visible=False, elem_id="chat_section") as chat_block:
-        chat_interface = gr.ChatInterface(fn=chat, title="PDFBot")
-
-    # Function to switch to the second block (chat block)
-    def switch_to_chat(file):
-        if file:
-            main(file)
-            return gr.update(visible=False), gr.update(visible=True)
-        return gr.update(), gr.update()
-
-    # Set the upload button to trigger the switch
-    upload_btn.upload(
-        switch_to_chat, inputs=[upload_btn], outputs=[upload_block, chat_block]
+    upload_button.click(
+        fn=process_pdf,
+        inputs=[file_output],
+        outputs=[upload_block, chat_block],
     )
 
-
-demo.css = """
-#upload_section {
-    padding-top: 25%;
-    justify-content: center;
-    align-items: center;
-}
-
-#chat_section {
-    height: 90vh;
-}
-
-.gr-chat-interface {
-    height: calc(90vh - 50px); /* Full screen minus space for the title */
-}
-"""
-
-# Launch the app
-demo.launch()
+if __name__ == "__main__":
+    demo.launch()
