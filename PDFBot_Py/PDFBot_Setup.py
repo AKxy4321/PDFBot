@@ -1,13 +1,18 @@
-from chromadb.config import DEFAULT_TENANT, DEFAULT_DATABASE, Settings
-import chromadb.utils.embedding_functions as embedding_functions
-from langchain_ollama import OllamaEmbeddings
-from llama_index.llms.ollama import Ollama 
-import chromadb
-import shutil
 import os
+import shutil
 
-def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODEL = "llama3.1", reset=True):
+import chromadb
+import chromadb.utils.embedding_functions as embedding_functions
+from chromadb.config import DEFAULT_DATABASE, DEFAULT_TENANT, Settings
+from langchain_ollama import OllamaEmbeddings
+from llama_index.llms.ollama import Ollama
 
+
+def PDFBot_Setup(
+    col_name,
+    EMBEDDING_MODEL="nomic-embed-text",
+    GENERATION_MODEL="llama3.1",
+):
     # Instantiate the embedding and generation models
 
     # embed_model and llm here needs to be used with llama-index functions
@@ -22,16 +27,17 @@ def PDFBot_Setup(col_name, EMBEDDING_MODEL = "nomic-embed-text", GENERATION_MODE
         model_name=EMBEDDING_MODEL,
     )
 
-    embeddings_path = os.path.join('..', 'embeddings')
-    shutil.rmtree(embeddings_path)
+    embeddings_path = os.path.join("..", "embeddings")
+    shutil.rmtree(embeddings_path, ignore_errors=True)
     os.makedirs(embeddings_path)
 
     # Setup a chroma client, make it persistent so that we can store the embeddings
-    chroma_client = chromadb.PersistentClient(path=embeddings_path,     
-                                settings=Settings(allow_reset=True),
-                                tenant=DEFAULT_TENANT,
-                                database=DEFAULT_DATABASE,
-                                )
+    chroma_client = chromadb.PersistentClient(
+        path=embeddings_path,
+        settings=Settings(allow_reset=True),
+        tenant=DEFAULT_TENANT,
+        database=DEFAULT_DATABASE,
+    )
 
     chroma_client.reset()
 
