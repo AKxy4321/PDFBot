@@ -3,9 +3,9 @@
 # llama-index-postprocessor-cohere-rerank
 llama-index-llms-ollama
 langchain_community
-lancghain-cohere
 langchain-chroma
 langchain-ollama
+langchain-cohere
 python-dotenv
 llama-parse
 llama-index
